@@ -1,10 +1,10 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -55,12 +55,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	data, err := io.ReadAll(mpFile)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Could not read file", err)
-		return
-	}
-
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find video", err)
@@ -71,8 +65,22 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	b64ImageData := base64.StdEncoding.EncodeToString(data)
-	thumbnailURL := fmt.Sprintf("data:%s;base64,%s", mediaType, b64ImageData)
+	assetPath := getAssetPath(videoIDString, mediaType)
+	assetDiskPath := cfg.getAssetDiskPath(assetPath)
+	assetFile, err := os.Create(assetDiskPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create asset file", err)
+		return
+	}
+
+	defer assetFile.Close()
+
+	if _, err := io.Copy(assetFile, mpFile); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not copy file", err)
+		return
+	}
+
+	thumbnailURL := cfg.getAssetURL(assetPath)
 
 	video.UpdatedAt = time.Now()
 	video.ThumbnailURL = &thumbnailURL
