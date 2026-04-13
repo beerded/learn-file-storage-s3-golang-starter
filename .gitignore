@@ -1,5 +1,6 @@
 out
 *.db
+*.swp
 .env
 assets/
 samples/
