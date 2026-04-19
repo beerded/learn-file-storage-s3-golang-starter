@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,9 +24,20 @@ func getFileExtension(mediaType string) string {
 	return parts[1]
 }
 
-func getAssetPath(videoIDString, mediaType string) string {
+func getAssetPath(mediaType string) string {
+	randIDString := make([]byte, 32)
+	_, err := rand.Read(randIDString)
+	if err != nil {
+		panic("failed to generate random bytes")
+	}
+
+	id := base64.RawURLEncoding.EncodeToString(randIDString)
 	ext := getFileExtension(mediaType)
-	return fmt.Sprintf("%s.%s", videoIDString, ext)
+	return fmt.Sprintf("%s.%s", id, ext)
+}
+
+func (cfg apiConfig) getObjectURL(key string) string {
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, key)
 }
 
 func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
