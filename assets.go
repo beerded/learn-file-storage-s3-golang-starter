@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -46,4 +51,59 @@ func (cfg apiConfig) getAssetDiskPath(assetPath string) string {
 
 func (cfg apiConfig) getAssetURL(assetPath string) string {
 	return fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, assetPath)
+}
+
+func getVideoAspectRatio(filePath string) (string, error) {
+	cmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-print_format", "json",
+		"-show_streams",
+		filePath,
+	)
+    outBuf := bytes.Buffer{}
+	cmd.Stdout = &outBuf
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("Got an error when running the command: %v\n", err)
+		return "", fmt.Errorf("ffprobe error: %v", err)
+	}
+
+	var data struct {
+		Streams []struct {
+			Index 		int 	`json:"index"`
+			AspectRatio string 	`json:"display_aspect_ratio"`
+			Width		int		`json:"width"`
+			Height		int		`json:"height"`
+		} `json:"streams"`
+	}
+
+	if err := json.Unmarshal(outBuf.Bytes(), &data); err != nil {
+		log.Fatalf("Error unmarshalling JSON: %v", err)
+		return "", fmt.Errorf("Could not parse ffprobe output: %v", err)
+	}
+
+	if len(data.Streams) == 0 {
+		return "", errors.New("no video streams found")
+	}
+
+	ar := data.Streams[0].AspectRatio
+	width := data.Streams[0].Width
+	height := data.Streams[0].Height
+
+	if ar != "" && ar == "16:9" {
+		return ar, nil
+	}
+	if ar != "" && ar == "9:16" {
+		return ar, nil
+	}
+	if ar == "" {
+		if width == 16*height/9 {
+			return "16:9", nil
+		}
+		if height == 16*width/9 {
+			return "9:16", nil
+		}
+		return "other", nil
+	}
+	return "other", nil
 }
