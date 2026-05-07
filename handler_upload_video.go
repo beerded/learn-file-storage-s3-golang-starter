@@ -1,25 +1,18 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"log"
 	"io"
 	"mime"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
-	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
 )
-
-const defaultSignedDuration time.Duration = 10*time.Minute
 
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
 	// Upload limit 1GB
@@ -133,10 +126,10 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	fakeURL := fmt.Sprintf("%s,%s", cfg.s3Bucket, key)
+	url := fmt.Sprintf("https://%s/%s", cfg.s3CfDistribution, key)
 
 	video.UpdatedAt = time.Now()
-	video.VideoURL = &fakeURL
+	video.VideoURL = &url
 
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
@@ -144,50 +137,5 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	signedVideo, err := cfg.dbVideoToSignedVideo(video)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Could not generate presigned URL", err)
-		return
-	}
-
-	respondWithJSON(w, http.StatusOK, signedVideo)
-}
-
-func generatePresignedURL(s3Client *s3.Client,
-						  bucket, key string,
-						  expireTime time.Duration) (string, error) {
-	presignClient := s3.NewPresignClient(s3Client)
-	req, err := presignClient.PresignGetObject(context.Background(),
-    	&s3.GetObjectInput{
-			Bucket:		aws.String(bucket),
-			Key:		aws.String(key),
-		},
-		s3.WithPresignExpires(expireTime))
-	if err != nil {
-		return "", err
-	}
-	return req.URL, nil
-}
-
-func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
-
-	if video.VideoURL == nil {
-		return video, errors.New("video has no URL string set")
-	}
-	videoSlice := strings.Split(*video.VideoURL, ",")
-	if len(videoSlice) != 2 {
-		log.Printf("videoURL '%s' has either 0 or more than 1 commas", video.VideoURL)
-		return video, errors.New("could not split video URL")
-	}
-	bucket := videoSlice[0]
-	key := videoSlice[1]
-
-	presignedURL, err := generatePresignedURL(cfg.s3Client, bucket, key, defaultSignedDuration)
-	if err != nil {
-		return video, err
-	}
-
-	video.VideoURL = &presignedURL
-	video.UpdatedAt = time.Now()
-	return video, nil
+	respondWithJSON(w, http.StatusOK, video)
 }
